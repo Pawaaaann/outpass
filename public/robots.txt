@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /admin
+Allow: /
+
+Sitemap: https://leave-ease-9ae9c.web.app/sitemap.xml

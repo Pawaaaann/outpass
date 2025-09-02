@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users collection
+    match /users/{userId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Leave requests
+    match /leaveRequests/{docId} {
+      // Students can create
+      allow create: if request.auth != null;
+
+      // Allow updates if user is authenticated (role-based filtering handled in app)
+      allow update: if request.auth != null;
+
+      // Everyone logged in can read their relevant requests
+      allow read: if request.auth != null;
+    }
+  }
+}
