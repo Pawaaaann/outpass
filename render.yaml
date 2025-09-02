@@ -1,9 +1,8 @@
 services:
-  - type: web
+  - type: static_site
     name: leaveease
-    env: static
-    buildCommand: "npm ci && npm run build"
-    staticPublishPath: "./build"
+    buildCommand: "npm install && npm run build"
+    publishPath: "./build"
     routes:
       - type: rewrite
         source: "/*"
