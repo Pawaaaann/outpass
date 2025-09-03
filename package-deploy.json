@@ -1,0 +1,9 @@
+{
+  "name": "outpass-deploy",
+  "version": "1.0.0",
+  "description": "Firebase security rules deployment",
+  "main": "deploy-rules.js",
+  "dependencies": {
+    "firebase-admin": "^11.11.0"
+  }
+}

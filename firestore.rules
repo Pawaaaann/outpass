@@ -1,21 +1,130 @@
 rules_version = '2';
 service cloud.firestore {
+  // Helper functions
+  function isAuthenticated() {
+    return request.auth != null;
+  }
+  
+  function isStudent() {
+    return request.auth.token.role == 'student';
+  }
+  
+  function isMentor() {
+    return request.auth.token.role == 'mentor';
+  }
+  
+  function isHod() {
+    return request.auth.token.role == 'hod';
+  }
+  
+  function isAdmin() {
+    return request.auth.token.role == 'admin';
+  }
+  
+  function isSelf(userId) {
+    return request.auth.uid == userId;
+  }
+  
+  function isDepartmentMember(department) {
+    return request.auth.token.department == department;
+  }
+  
+  function isValidRequest() {
+    return request.resource.data.duration > 0
+        && request.resource.data.startDate != null
+        && request.resource.data.reason != null
+        && request.resource.data.status in ['pending', 'approved', 'rejected', 'cancelled'];
+  }
+  
+  function isValidStatusTransition(oldStatus, newStatus) {
+    // Students can only cancel pending requests
+    if (isStudent() && oldStatus == 'pending' && newStatus == 'cancelled') {
+      return true;
+    }
+    
+    // Mentors can approve/reject pending requests
+    if (isMentor() && oldStatus == 'pending' && (newStatus == 'approved' || newStatus == 'rejected')) {
+      return true;
+    }
+    
+    // HODs can approve/reject mentor-approved requests
+    if (isHod() && oldStatus == 'approved' && (newStatus == 'hod_approved' || newStatus == 'rejected')) {
+      return true;
+    }
+    
+    // Admins can do anything
+    return isAdmin();
+  }
+
   match /databases/{database}/documents {
     // Users collection
     match /users/{userId} {
-      allow read, write: if request.auth != null;
+      // Users can read/write their own profile
+      allow read, write: if isAuthenticated() && isSelf(userId);
+      
+      // Admins can read all profiles
+      allow read: if isAdmin();
     }
 
-    // Leave requests
+    // Leave requests collection
     match /leaveRequests/{docId} {
-      // Students can create
-      allow create: if request.auth != null;
-
-      // Allow updates if user is authenticated (role-based filtering handled in app)
-      allow update: if request.auth != null;
-
-      // Everyone logged in can read their relevant requests
-      allow read: if request.auth != null;
+      // Create rules
+      allow create: if isAuthenticated() 
+        && isStudent() 
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && isValidRequest();
+      
+      // Read rules
+      allow read: if isAuthenticated() && (
+        // Users can read their own requests
+        resource.data.studentId == request.auth.uid ||
+        // Mentors can read requests from their department
+        (isMentor() && resource.data.department == request.auth.token.department) ||
+        // HODs can read all requests from their department
+        (isHod() && resource.data.department == request.auth.token.department) ||
+        // Admins can read everything
+        isAdmin()
+      );
+      
+      // Update rules
+      allow update: if isAuthenticated() && (
+        // Students can only cancel their own pending requests
+        (isStudent() 
+          && resource.data.studentId == request.auth.uid 
+          && resource.data.status == 'pending' 
+          && request.resource.data.status == 'cancelled') ||
+          
+        // Mentors can approve/reject pending requests in their department
+        (isMentor() 
+          && resource.data.department == request.auth.token.department 
+          && resource.data.status == 'pending' 
+          && (request.resource.data.status == 'approved' || request.resource.data.status == 'rejected')) ||
+          
+        // HODs can approve/reject mentor-approved requests in their department
+        (isHod() 
+          && resource.data.department == request.auth.token.department 
+          && resource.data.status == 'approved' 
+          && (request.resource.data.status == 'hod_approved' || request.resource.data.status == 'rejected')) ||
+          
+        // Admins can do anything
+        isAdmin()
+      ) && isValidStatusTransition(resource.data.status, request.resource.data.status);
+      
+      // Delete is not allowed - use status updates instead
+      allow delete: if false;
+      
+      // Audit log subcollection
+      match /auditLogs/{logId} {
+        allow read: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid ||
+          isAdmin()
+        );
+        allow create: if isAuthenticated() && (
+          request.resource.data.userId == request.auth.uid ||
+          isAdmin()
+        );
+      }
     }
   }
 }

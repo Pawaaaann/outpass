@@ -1,8 +1,9 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 
+// Firebase configuration with environment variable fallbacks
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyCcvsEoFrAPo6H-T_4ko3k0cI2O4oQSJXA",
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "leave-ease-9ae9c.firebaseapp.com",
@@ -14,32 +15,71 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+let app;
+let auth;
+let db;
+let functions;
 
-// Initialize Firebase services
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+const initializeFirebase = () => {
+  try {
+    // Initialize Firebase app
+    app = initializeApp(firebaseConfig);
+    
+    // Initialize services
+    auth = getAuth(app);
+    db = getFirestore(app);
+    functions = getFunctions(app, 'us-central1');
+    
+    // Enable offline persistence for Firestore
+    if (typeof window !== 'undefined') {
+      enableIndexedDbPersistence(db).catch((err) => {
+        if (err.code === 'failed-precondition') {
+          console.warn('Offline persistence can only be enabled in one tab at a time.');
+        } else if (err.code === 'unimplemented') {
+          console.warn('The current browser does not support offline persistence.');
+        }
+      });
+      
+      // Set auth persistence
+      setPersistence(auth, browserLocalPersistence).catch((error) => {
+        console.error('Error setting auth persistence:', error);
+      });
+    }
 
-// Debug Firebase config in production
-if (process.env.NODE_ENV === 'production') {
-  console.log('Firebase config:', {
-    projectId: firebaseConfig.projectId,
-    authDomain: firebaseConfig.authDomain,
-    apiKey: firebaseConfig.apiKey ? 'Set' : 'Missing'
-  });
-}
-// Ensure region matches your Functions deployment/emulator
-export const functions = getFunctions(app, 'us-central1');
+    // Debug Firebase config in production
+    if (process.env.NODE_ENV === 'production') {
+      console.log('Firebase config:', {
+        projectId: firebaseConfig.projectId,
+        authDomain: firebaseConfig.authDomain,
+        apiKey: firebaseConfig.apiKey ? 'Set' : 'Missing',
+        environment: process.env.NODE_ENV
+      });
+    }
 
-// Only connect to emulators if explicitly enabled via env flag
-export const useEmulators =
-  typeof process !== 'undefined' &&
-  process.env &&
-  process.env.REACT_APP_USE_EMULATORS === 'true';
+    // Connect to emulators if enabled
+    const useEmulators = 
+      process.env.NODE_ENV === 'development' && 
+      process.env.REACT_APP_USE_EMULATORS === 'true';
 
-if (useEmulators) {
-  try { connectFirestoreEmulator(db, 'localhost', 8080); } catch (_) {}
-  try { connectFunctionsEmulator(functions, 'localhost', 5001); } catch (_) {}
-}
+    if (useEmulators) {
+      try {
+        connectFirestoreEmulator(db, 'localhost', 8080);
+        connectFunctionsEmulator(functions, 'localhost', 5001);
+        console.log('Connected to Firebase emulators');
+      } catch (error) {
+        console.error('Error connecting to emulators:', error);
+      }
+    }
 
+    return { app, auth, db, functions };
+  } catch (error) {
+    console.error('Firebase initialization error:', error);
+    throw error;
+  }
+};
+
+// Initialize Firebase and export services
+const firebase = initializeFirebase();
+
+export { auth, db, functions };
 export default app;
