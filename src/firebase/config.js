@@ -19,6 +19,15 @@ const app = initializeApp(firebaseConfig);
 // Initialize Firebase services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Debug Firebase config in production
+if (process.env.NODE_ENV === 'production') {
+  console.log('Firebase config:', {
+    projectId: firebaseConfig.projectId,
+    authDomain: firebaseConfig.authDomain,
+    apiKey: firebaseConfig.apiKey ? 'Set' : 'Missing'
+  });
+}
 // Ensure region matches your Functions deployment/emulator
 export const functions = getFunctions(app, 'us-central1');
 
